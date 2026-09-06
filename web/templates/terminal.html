@@ -1,1 +1,25 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AQMSS Terminal</title><link rel="stylesheet" href="/static/standalone.css"><script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script><script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script></head><body class="standalone-body"><header class="standalone-header"><a href="/" class="standalone-brand"><span class="mini-logo">A</span>AQMSS <small>TERMINAL</small></a><div class="standalone-actions"><span class="live"><i></i> LIVE AQMSS</span><a href="/copilot">Open AQMSS Assistant ↗</a><a href="/news">News ↗</a></div></header><main class="terminal-page"><div class="terminal-page-head"><div><span class="eyebrow">MARKET WORKSPACE / REAL-TIME</span><h1>Market Terminal</h1></div><div class="terminal-page-tools"><button class="active" data-interval="15">15m</button><button data-interval="60">1h</button><button data-interval="240">4h</button><button data-interval="D">1D</button><button id="terminal-refresh">↻ Refresh</button><button id="terminal-fullscreen">⛶</button></div></div><div class="terminal-grid"><aside><div class="aside-head"><strong>Market Overview</strong><span id="market-count">--</span></div><div class="terminal-filter"><button class="active" data-filter="all">All</button><button data-filter="bullish">Bullish</button><button data-filter="bearish">Bearish</button></div><input id="market-search" placeholder="Search markets..."><div id="terminal-markets" class="standalone-markets"></div></aside><section class="big-chart" id="big-chart"><div class="chart-head"><div><strong id="active-symbol">EURUSD</strong><span id="active-price">--</span><em id="active-change">--</em></div><span id="chart-status">Loading live OHLC...</span></div><div id="price-chart"></div><div class="chart-foot"><span>Real market candles · Yahoo Finance</span><span>Drag to pan · Wheel to zoom</span></div></section></div></main><script src="/static/terminal.js"></script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>AQMSS Terminal</title>
+    <link rel="stylesheet" href="/static/standalone.css">
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+</head>
+<body class="standalone-body">
+<header class="standalone-header">
+    <a href="/" class="standalone-brand"><span class="mini-logo">A</span>AQMSS <small>TERMINAL</small></a>
+    <div class="standalone-actions"><span class="live"><i></i> LIVE AQMSS</span><a href="/billing">Подписка ↗</a><a href="/test">Test / CSV analysis ↗</a><a href="/copilot">AQMSS Assistant ↗</a><a href="/news">News ↗</a></div>
+</header>
+<main class="terminal-page">
+    <div class="terminal-page-head"><div><span class="eyebrow">MARKET WORKSPACE / REAL-TIME</span><h1>Market Terminal</h1></div><div class="terminal-page-tools"><button class="active" data-interval="15">15m</button><button data-interval="60">1h</button><button data-interval="240">4h</button><button data-interval="D">1D</button><button id="terminal-refresh">↻ Refresh</button><button id="terminal-fullscreen">⛶</button></div></div>
+    <div class="terminal-grid">
+        <aside><div class="aside-head"><strong>Market Overview</strong><span id="market-count">--</span></div><div class="terminal-filter"><button class="active" data-filter="all">All</button><button data-filter="bullish">Bullish</button><button data-filter="bearish">Bearish</button></div><input id="market-search" placeholder="Search markets..."><div id="terminal-markets" class="standalone-markets"></div></aside>
+        <section class="big-chart" id="big-chart"><div class="chart-head"><div><strong id="active-symbol">EURUSD</strong><span id="active-price">--</span><em id="active-change">--</em></div><span id="chart-status">Loading live OHLC...</span></div><div id="price-chart"></div><div class="chart-foot"><span>Real market candles · Yahoo Finance</span><span>Drag to pan · Wheel to zoom</span></div></section>
+    </div>
+</main>
+<script src="/static/terminal.js?v=20260905-csv"></script>
+</body>
+</html>

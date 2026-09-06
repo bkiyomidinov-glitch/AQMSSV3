@@ -5,9 +5,8 @@ Reads real data from market_scores.csv, dataset.csv, models/metrics.json
 """
 
 import sys
-print("[DEBUG] Flask app starting - importing modules...", flush=True)
 
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_cors import CORS
 from datetime import datetime
 import pandas as pd
@@ -19,8 +18,14 @@ from pathlib import Path
 import random
 import threading
 import uuid
+import sqlite3
+import hashlib
+import secrets
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / '.env')
 
 # ── Groq LLM ──────────────────────────────────────────────────────────────────
 try:
@@ -65,32 +70,79 @@ AI_IMPORT_ERROR = None
 def import_ai_module():
     global AI_AVAILABLE, AI_IMPORT_ERROR
     try:
-        print("[DEBUG] Starting AI module import in thread...", flush=True)
+        print("loading AI module", flush=True)
         from ai_module import train_and_predict
         AI_AVAILABLE = True
-        print("[DEBUG] AI module imported successfully", flush=True)
+        print("AI module loaded", flush=True)
     except Exception as e:
         AI_IMPORT_ERROR = f"{type(e).__name__}"
-        print(f"⚠️  AI module not available - using mock predictions: {AI_IMPORT_ERROR}", flush=True)
+        print(f"AI module unavailable: {AI_IMPORT_ERROR}", flush=True)
 
-# Try to import AI module with timeout
-print("[DEBUG] Attempting to import ai_module...", flush=True)
 ai_thread = threading.Thread(target=import_ai_module, daemon=True)
 ai_thread.daemon = True
 ai_thread.start()
 ai_thread.join(timeout=3)  # Wait max 3 seconds
 
 if ai_thread.is_alive():
-    print("⚠️  AI module import timeout - continuing without AI", flush=True)
+    print("AI module import timed out", flush=True)
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
+app.secret_key = os.environ.get('AQMSS_SECRET_KEY', secrets.token_hex(32))
 
 # Configuration - paths to real AQMSS data
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / 'data'
 RESULTS_DIR = PROJECT_ROOT / 'results'
 MODELS_DIR = PROJECT_ROOT / 'models'
+AUTH_DB = PROJECT_ROOT / 'data' / 'aqmss_auth.sqlite3'
+PAYMENT_ADDRESS = os.environ.get('USDT_TRC20_ADDRESS', 'PASTE_YOUR_TRC20_ADDRESS_HERE')
+SUBSCRIPTION_PRICE = os.environ.get('SUBSCRIPTION_PRICE_USDT', '19')
+
+
+def auth_db():
+    AUTH_DB.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(AUTH_DB)
+    db.row_factory = sqlite3.Row
+    db.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    )''')
+    db.commit()
+    return db
+
+
+def password_hash(password):
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+
+def current_user():
+    user_id = session.get('user_id')
+    if not user_id:
+        return None
+    db = auth_db()
+    user = db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    db.close()
+    return user
+
+
+def require_login():
+    if not current_user():
+        return redirect(url_for('login_page', next=request.path))
+    return None
+
+
+@app.before_request
+def protect_api():
+    if not request.path.startswith('/api/'):
+        return None
+    user = current_user()
+    if not user:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    return None
 
 # Cache for market data
 market_cache = {
@@ -387,22 +439,110 @@ def index():
 
 @app.route('/terminal')
 def terminal_page():
+    gate = require_login()
+    if gate:
+        return gate
     return render_template('terminal.html')
 
 
 @app.route('/copilot')
 def copilot_page():
+    gate = require_login()
+    if gate:
+        return gate
     return render_template('copilot.html')
 
 
 @app.route('/news')
 def news_page():
+    gate = require_login()
+    if gate:
+        return gate
     return render_template('news.html')
 
 
 @app.route('/test')
 def test_page():
+    gate = require_login()
+    if gate:
+        return gate
+    if not current_user()['is_active']:
+        return redirect(url_for('billing_page'))
     return render_template('test.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register_page():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        if not email or len(password) < 6:
+            return render_template('auth.html', mode='register', error='Введите email и пароль минимум из 6 символов.')
+        db = auth_db()
+        try:
+            cursor = db.execute(
+                'INSERT INTO users(email, password_hash, created_at) VALUES (?, ?, ?)',
+                (email, password_hash(password), datetime.utcnow().isoformat())
+            )
+            db.commit()
+            session['user_id'] = cursor.lastrowid
+            return redirect(url_for('terminal_page'))
+        except sqlite3.IntegrityError:
+            return render_template('auth.html', mode='register', error='Этот email уже зарегистрирован.')
+        finally:
+            db.close()
+    return render_template('auth.html', mode='register')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        db = auth_db()
+        user = db.execute('SELECT * FROM users WHERE email = ? AND password_hash = ?', (email, password_hash(password))).fetchone()
+        db.close()
+        if user:
+            session['user_id'] = user['id']
+            return redirect(request.args.get('next') or url_for('terminal_page'))
+        return render_template('auth.html', mode='login', error='Неверный email или пароль.')
+    return render_template('auth.html', mode='login')
+
+
+@app.route('/logout')
+def logout_page():
+    session.clear()
+    return redirect(url_for('index'))
+
+
+@app.route('/billing')
+def billing_page():
+    gate = require_login()
+    if gate:
+        return gate
+    return render_template('billing.html', user=current_user(), address=PAYMENT_ADDRESS, price=SUBSCRIPTION_PRICE)
+
+
+@app.route('/admin')
+def admin_page():
+    if not os.environ.get('AQMSS_ADMIN_KEY') or request.args.get('key') != os.environ['AQMSS_ADMIN_KEY']:
+        return 'Not found', 404
+    db = auth_db()
+    users = db.execute('SELECT id, email, is_active, created_at FROM users ORDER BY id DESC').fetchall()
+    db.close()
+    return render_template('admin.html', users=users, key=request.args['key'])
+
+
+@app.route('/admin/activate/<int:user_id>', methods=['POST'])
+def activate_user(user_id):
+    key = request.form.get('key')
+    if not os.environ.get('AQMSS_ADMIN_KEY') or key != os.environ['AQMSS_ADMIN_KEY']:
+        return 'Not found', 404
+    db = auth_db()
+    db.execute('UPDATE users SET is_active = 1 WHERE id = ?', (user_id,))
+    db.commit()
+    db.close()
+    return redirect(url_for('admin_page', key=key))
 
 
 @app.route('/api/markets', methods=['GET'])
@@ -709,6 +849,7 @@ def _build_system_prompt(aqmss) -> str:
         )
     base += (
         "Always answer concisely and clearly. "
+        "If the user supplies CSV-derived metrics for another asset, treat those metrics as the authoritative context for that asset and analyze it directly; do not say that only EURUSD is supported. "
         "If the user writes in Russian, answer in Russian. "
         "Do not use markdown headers or bullet asterisks — plain text only."
     )

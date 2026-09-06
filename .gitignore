@@ -3,6 +3,7 @@
 .env.*
 web/.env
 web/.env.*
+data/aqmss_auth.sqlite3
 
 # Python environments and generated files
 .venv/

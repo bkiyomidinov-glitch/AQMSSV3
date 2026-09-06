@@ -6,7 +6,6 @@ import sys
 import argparse
 from pathlib import Path
 
-# Optional AI predictor (Market Environment Classifier)
 try:
     from predictor import load_predictor
 except Exception:
@@ -55,15 +54,12 @@ if not price_csv_path.exists():
     print(f"Error: price CSV not found: {price_csv_path}")
     exit()
 
-# -------------------------------
-# Конфигурируемые параметры
-# -------------------------------
 base_weights = {
-    "volatility_regime": 0.25,  # Current ATR vs historical mean (was: liquidity)
-    "true_liquidity": 0.15,     # Volume-based metric
+    "volatility_regime": 0.25,
+    "true_liquidity": 0.15,
     "structure": 0.30,
     "momentum": 0.20,
-    "volatility_level": 0.10    # ATR std dev (volatility stability)
+    "volatility_level": 0.10
 }
 
 
@@ -93,7 +89,6 @@ def build_adaptive_weights(
     """
     adaptive = dict(static_weights)
 
-    # Trend-aware adjustment
     if trend_strength >= 0.55:
         adaptive['structure'] += 0.07
         adaptive['momentum'] += 0.05 + (0.02 * abs(direction_bias))
@@ -107,13 +102,11 @@ def build_adaptive_weights(
         adaptive['momentum'] -= 0.07
         adaptive['volatility_regime'] -= 0.08
 
-    # Extra protection in excessive volatility regime
     if scores.get('volatility_regime', 0) > 8.0:
         adaptive['volatility_level'] += 0.04
         adaptive['momentum'] -= 0.02
         adaptive['structure'] -= 0.02
 
-    # Blend with model feature importances when available
     if ai_feature_weights is not None:
         confidence = 0.2
         if ai_high_quality_prob is not None:
@@ -125,54 +118,43 @@ def build_adaptive_weights(
 
     return normalize_weights(adaptive)
 
-# Percentile-based thresholds (calculated from data distribution)
 thresholds = {
     "NO_TRADE": 4,      # Bottom 25%
     "WEAK": 6,          # 25-50%
     "NORMAL": 7.5,      # 50-75%
     "HIGH": 10          # Top 25%
 }
-# Note: Thresholds should be backtested and adjusted based on win rate
-structure_window = 20    # количество свечей для structure
-momentum_window = 5      # количество свечей для momentum
-atr_window = 50          # ATR для расчёта volatility regime и volatility level
-liquidity_window = 10    # Volume window for true liquidity
-time_weighted = True     # учитывать веса последних свечей
+structure_window = 20
+momentum_window = 5
+atr_window = 50
+liquidity_window = 10
+time_weighted = True
 
-# -------------------------------
-# Чтение данных
-# -------------------------------
 try:
     df = pd.read_csv(price_csv_path, header=None)
     df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'volume2', 'other']
-    # Skip the first row (corrupted header)
     df = df.iloc[1:].reset_index(drop=True)
 except Exception as e:
     print("Error reading CSV:", e)
     exit()
 
-# Валидация данных
 if len(df) < 50:
     print("Error: Not enough data. Require at least 50 candles.")
     exit()
 
 df = df.dropna()
 
-# Конвертирование цен в float
 df['open'] = pd.to_numeric(df['open'], errors='coerce')
 df['high'] = pd.to_numeric(df['high'], errors='coerce')
 df['low'] = pd.to_numeric(df['low'], errors='coerce')
-# Convert volume columns
 df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
 df['volume2'] = pd.to_numeric(df['volume2'], errors='coerce')
 df = df.dropna()
 
-# Fix unicode encoding for Windows
 if sys.platform == 'win32':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Validate data integrity
 if (df['high'] < df['low']).any():
     print("Warning: Found candles where high < low. Removing corrupted data.")
     df = df[df['high'] >= df['low']]
@@ -181,74 +163,47 @@ if len(df) < 50:
     print("Error: Not enough valid data after integrity check.")
     exit()
 
-# -------------------------------
-# ATR для волатильности
-# -------------------------------
 df['HL'] = df['high'] - df['low']
 df['HC'] = abs(df['high'] - df['close'].shift(1))
 df['LC'] = abs(df['low'] - df['close'].shift(1))
 df['TR'] = df[['HL','HC','LC']].max(axis=1)
 df['ATR'] = df['TR'].rolling(atr_window).mean()
 
-# Calculate statistics BEFORE dropping NaN to use full dataset
 mean_atr = df['ATR'].mean()
 atr_std = df['ATR'].std()
 
-# Now drop NaN
 df = df.dropna()
 
-# Verify we have enough data after cleanup
 required_rows = max(structure_window, momentum_window)
 if len(df) < required_rows:
     print(f"Error: Not enough data after processing. Have {len(df)}, need {required_rows}")
     exit()
 
-# Use the last valid ATR
 current_atr = df['ATR'].iloc[-1]
 
-# -------------------------------
-# Volatility Regime Score (Current ATR vs Historical Mean)
-# This measures if volatility is above/below average (NOT true liquidity)
-# -------------------------------
 atr_ratio = current_atr / mean_atr if mean_atr > 0 else 0
 volatility_regime_raw = atr_ratio * 10
 volatility_regime_score = np.clip(volatility_regime_raw, 0, 10)
 
-# -------------------------------
-# True Liquidity Score (Volume-Based Metric + Concentration)
-# Higher volume AND consistent volume = better liquidity for entry/exit
-# Uses volume ratio + coefficient of variation (CV) to measure concentration
-# CV = std/mean: lower CV = more consistent volume = better liquidity
-# -------------------------------
 recent_volume = df['volume'].iloc[-liquidity_window:].values
 mean_volume = df['volume'].mean()
 std_volume = df['volume'].std()
 
 if mean_volume > 0 and len(recent_volume) > 0:
-    # Volume magnitude: recent vs historical average
     volume_ratio = recent_volume.mean() / mean_volume
     volume_magnitude = np.clip(volume_ratio * 10, 0, 10)
     
-    # Volume consistency: coefficient of variation (lower = more consistent = better)
-    # CV = std / mean: lower CV = more consistent
     if recent_volume.mean() > 0:
         volume_cv = std_volume / recent_volume.mean()
         consistency_score = 10 - np.clip(volume_cv * 10, 0, 10)  # Invert: low CV = high score
     else:
         consistency_score = 5
     
-    # Combine: 60% magnitude, 40% consistency
     true_liquidity_raw = (volume_magnitude * 0.6) + (consistency_score * 0.4)
     true_liquidity_score = np.clip(true_liquidity_raw, 0, 10)
 else:
     true_liquidity_score = 5  # Neutral if no volume data
 
-# -------------------------------
-# Volatility Level Score (ATR Standard Deviation - Stability)
-# Measures stability: high std = unstable = bad = lower score
-# low std = stable = good = higher score
-# Formula: 10 - (std/mean * 10) inverts so stability gives higher score
-# -------------------------------
 if mean_atr > 0:
     volatility_stability_ratio = atr_std / mean_atr
     volatility_level_raw = 10 - np.clip(volatility_stability_ratio * 10, 0, 10)
@@ -256,24 +211,15 @@ else:
     volatility_level_raw = 0
 volatility_level_score = np.clip(volatility_level_raw, 0, 10)
 
-# -------------------------------
-# Structure Score (Trend Strength using R² - Coefficient of Determination)
-# R² measures how well data fits the trend line (0 to 1, then scale to 0-10)
-# R² = 1 - (SS_residual / SS_total)
-# High R² = strong trend = good structure = higher score
-# Low R² = scattered data = weak structure = lower score
-# -------------------------------
 highs = df['high'].iloc[-structure_window:].values
 lows = df['low'].iloc[-structure_window:].values
 x = np.arange(structure_window)
 
-# Fit linear regression for highs and lows
 coeffs_high = np.polyfit(x, highs, 1)
 coeffs_low = np.polyfit(x, lows, 1)
 fit_high = np.polyval(coeffs_high, x)
 fit_low = np.polyval(coeffs_low, x)
 
-# Calculate R² for both (coefficient of determination)
 ss_res_high = np.sum((highs - fit_high) ** 2)
 ss_tot_high = np.sum((highs - np.mean(highs)) ** 2)
 r2_high = 1 - (ss_res_high / ss_tot_high) if ss_tot_high > 0 else 0
@@ -282,39 +228,27 @@ ss_res_low = np.sum((lows - fit_low) ** 2)
 ss_tot_low = np.sum((lows - np.mean(lows)) ** 2)
 r2_low = 1 - (ss_res_low / ss_tot_low) if ss_tot_low > 0 else 0
 
-# Average R² and scale to 0-10
 r2_avg = (r2_high + r2_low) / 2
 structure_raw = np.clip(r2_avg * 10, 0, 10)
 structure_score = structure_raw
 
-# -------------------------------
-# Momentum Score (Candle Range vs ATR + Directional Bias)
-# Measures both magnitude (range expansion) and direction (bullish/bearish)
-# Formula uses time-weighted candle ranges normalized by ATR
-# Direction bias: positive when close > open (bullish), negative when close < open (bearish)
-# Final score: 5 is neutral, >5 is bullish momentum, <5 is bearish momentum (but all measured as intensity)
-# -------------------------------
 momentum_range = (df['high'].iloc[-momentum_window:] - df['low'].iloc[-momentum_window:]).values
 momentum_atr = df['ATR'].iloc[-momentum_window:].values
 momentum_closes = df['close'].iloc[-momentum_window:].values
 momentum_opens = df['open'].iloc[-momentum_window:].values
 
-# Check for zero/NaN values in momentum_atr
 if np.any(momentum_atr == 0) or np.any(np.isnan(momentum_atr)):
     momentum_score = 5  # Neutral if data invalid
 else:
     if time_weighted:
         weights_array = np.linspace(0.5, 1.0, momentum_window)
-        # Magnitude: range relative to ATR (expansion = higher)
         ratio_weighted = (momentum_range / momentum_atr) * weights_array
         momentum_magnitude = (ratio_weighted.sum() / weights_array.sum()) * 10
         
-        # Direction: close vs open (positive = bullish, negative = bearish)
         direction_raw = (momentum_closes - momentum_opens) * weights_array
         direction_normalized = (direction_raw.sum() / momentum_range.sum()) if momentum_range.sum() > 0 else 0
         direction_component = np.clip(direction_normalized * 3, -2, 2)  # ±2 adjustment
         
-        # Combine: magnitude + direction bias (but keep 0-10 range)
         momentum_raw = np.clip(momentum_magnitude + direction_component, 0, 10)
     else:
         momentum_magnitude = (momentum_range / momentum_atr).mean() * 10
@@ -325,9 +259,6 @@ else:
     
     momentum_score = np.clip(momentum_raw, 0, 10)
 
-# -------------------------------
-# TOTAL SCORE
-# -------------------------------
 scores = {
     "volatility_regime": volatility_regime_score,
     "true_liquidity": true_liquidity_score,
@@ -336,15 +267,11 @@ scores = {
     "volatility_level": volatility_level_score
 }
 
-# Validate scores - replace NaN with 0
 for k, v in scores.items():
     if np.isnan(v) or np.isinf(v):
         print(f"Warning: {k} score is invalid ({v}), setting to 0")
         scores[k] = 0
 
-# -------------------------------
-# AI Integration + Adaptive Weights
-# -------------------------------
 ai_high_quality_prob = None
 ai_feature_weights = None
 
@@ -398,9 +325,6 @@ if np.isnan(total_score) or np.isinf(total_score):
     print("Error: Total score is invalid. Check data quality.")
     total_score = 0
 
-# -------------------------------
-# Результат
-# -------------------------------
 if total_score < thresholds['NO_TRADE']:
     market_condition = "NO TRADE"
 elif total_score < thresholds['WEAK']:
@@ -410,33 +334,24 @@ elif total_score < thresholds['NORMAL']:
 else:
     market_condition = "HIGH QUALITY MARKET"
 
-# -------------------------------
-# Вывод
-# -------------------------------
 print("=== Market Quality Score (AMQSS v2 - Fixed) ===")
-print("\n📊 Scores per factor:")
+print("\nScores per factor:")
 print(f"  Volatility Regime (ATR ratio): {volatility_regime_score:.2f}/10")
 print(f"  True Liquidity (Volume-based): {true_liquidity_score:.2f}/10")
 print(f"  Structure (Trend strength): {structure_score:.2f}/10")
 print(f"  Momentum (Candle range): {momentum_score:.2f}/10")
 print(f"  Volatility Level (Stability): {volatility_level_score:.2f}/10")
-print("\n🧠 Adaptive Weights (AI + Trend):")
+print("\nAdaptive weights (AI + trend):")
 for factor_name, factor_weight in adaptive_weights.items():
     print(f"  {factor_name}: {factor_weight:.3f}")
-print(f"\n💰 TOTAL SCORE: {total_score:.2f}/10")
-print(f"📈 Market Condition: {market_condition}")
-print("\n⚠️  Note: Thresholds should be backtested for your strategy")
-print("\n📋 Last 10 candles:")
+print(f"\nTotal score: {total_score:.2f}/10")
+print(f"Market condition: {market_condition}")
+print("\nNote: thresholds should be backtested for your strategy")
+print("\nLast 10 candles:")
 print(df[['time', 'open', 'high', 'low', 'close', 'volume', 'ATR']].tail(10).to_string(index=False))
-# -------------------------------
-# Save results to CSV for dashboard
-# -------------------------------
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
 
-# Create results dataframe
-# Use timestamp from ~30 bars before end (so forward performance can be computed)
-# This ensures the timestamp has enough future bars for ML training
 safe_idx = max(0, len(df) - 30)
 amqss_timestamp = pd.to_datetime(df['time'].iloc[safe_idx])
 

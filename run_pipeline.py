@@ -9,13 +9,11 @@ import subprocess
 import argparse
 from pathlib import Path
 
-# Paths
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / 'data'
 MODELS_DIR = PROJECT_ROOT / 'models'
 RESULTS_DIR = PROJECT_ROOT / 'results'
 
-# Ensure directories exist
 for d in [DATA_DIR, MODELS_DIR, RESULTS_DIR]:
     os.makedirs(str(d), exist_ok=True)
 
@@ -35,10 +33,7 @@ def parse_args():
 
 
 def run_step(step_name, script_path, args=None):
-    """Run a Python script and report status."""
-    print(f"\n{'='*60}")
-    print(f"STEP: {step_name}")
-    print(f"{'='*60}")
+    print(f"\n{step_name}")
     
     cmd = [sys.executable, script_path]
     if args:
@@ -47,13 +42,13 @@ def run_step(step_name, script_path, args=None):
     try:
         result = subprocess.run(cmd, capture_output=False, text=True, cwd=str(PROJECT_ROOT))
         if result.returncode == 0:
-            print(f"✓ {step_name} completed successfully")
+            print(f"{step_name}: done")
             return True
         else:
-            print(f"✗ {step_name} failed")
+            print(f"{step_name}: failed")
             return False
     except Exception as e:
-        print(f"✗ {step_name} error: {e}")
+        print(f"{step_name}: error: {e}")
         return False
 
 
@@ -80,14 +75,12 @@ def main():
         print("  Use --price-csv <path> or set AMQSS_PRICE_CSV")
         return
 
-    print("\n" + "="*60)
-    print("AMQSS AI LAYER - END-TO-END SETUP")
-    print("="*60)
+    print("\nAMQSS AI layer setup")
     
     # Step 1: Build dataset
-    print("\n[1/4] Building dataset from AMQSS results + price data...")
+    print("\n[1/4] Building dataset")
     if not os.path.exists(str(amqss_csv)):
-        print(f"⚠️  No AMQSS results found at {amqss_csv}")
+        print(f"No AMQSS results found at {amqss_csv}")
         print("    Run main.py first to generate market_scores.csv")
         print("    Skipping dataset builder for now.")
         dataset_ok = False
@@ -104,11 +97,11 @@ def main():
         )
     
     if not dataset_ok:
-        print("\n⚠️  Skipping training without dataset. Run main.py first.")
+        print("\nSkipping training without a dataset")
         return
     
     # Step 2: Train model
-    print("\n[2/4] Training model (time-based split, no shuffle)...")
+    print("\n[2/4] Training model")
     trainer_script = str(PROJECT_ROOT / 'trainer.py')
     trainer_ok = run_step(
         "Trainer",
@@ -122,11 +115,11 @@ def main():
     )
     
     if not trainer_ok:
-        print("\n✗ Training failed.")
+        print("\nTraining failed")
         return
     
     # Step 3: Evaluate model
-    print("\n[3/4] Evaluating model on test set...")
+    print("\n[3/4] Evaluating model")
     evaluator_script = str(PROJECT_ROOT / 'evaluator.py')
     eval_ok = run_step(
         "Evaluator",
@@ -140,11 +133,11 @@ def main():
     )
     
     if not eval_ok:
-        print("\n✗ Evaluation failed.")
+        print("\nEvaluation failed")
         return
     
     # Step 4: Run main.py with predictor
-    print("\n[4/4] Running main.py with new AI predictor...")
+    print("\n[4/4] Running main.py")
     main_script = str(PROJECT_ROOT / 'main.py')
     main_ok = run_step(
         "Main (with AI)",
@@ -157,17 +150,15 @@ def main():
     )
     
     # Summary
-    print("\n" + "="*60)
-    print("SUMMARY")
-    print("="*60)
+    print("\nSummary")
     if all([dataset_ok, trainer_ok, eval_ok, main_ok]):
-        print("✓ All steps completed successfully!")
+        print("All steps completed")
         print(f"\nArtifacts:")
         print(f"  Model & Metadata:  {models_dir}")
         print(f"  Evaluation plots:  {models_dir}")
         print(f"  Results:           {results_dir}")
     else:
-        print("✗ Some steps failed. Check output above.")
+        print("Some steps failed")
 
 
 if __name__ == '__main__':

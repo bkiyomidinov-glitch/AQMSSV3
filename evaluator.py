@@ -1,8 +1,4 @@
-"""
-Evaluator for AMQSS AI Layer
-Purpose: ROC-AUC, precision/recall, feature importance on test set.
-Report: Model performance & feature contributions.
-"""
+"""Evaluate the trained model on the test split."""
 
 import pandas as pd
 import numpy as np
@@ -26,17 +22,9 @@ class AMQSSEvaluator:
     """Evaluate trained RandomForest on test set."""
     
     def __init__(self, models_dir, dataset_csv_path):
-        """
-        Load model and dataset.
-        
-        Args:
-            models_dir: Directory with model.pkl, scaler.pkl, metadata.json
-            dataset_csv_path: Path to dataset.csv
-        """
         self.models_dir = models_dir
         self.dataset_csv_path = dataset_csv_path
         
-        # Load model and scaler
         with open(os.path.join(models_dir, 'model.pkl'), 'rb') as f:
             self.model = pickle.load(f)
         
@@ -47,7 +35,7 @@ class AMQSSEvaluator:
             self.metadata = json.load(f)
         
         self.feature_cols = self.metadata['feature_columns']
-        print("[Evaluator] Model loaded")
+        print("Model loaded")
     
     def load_and_split_dataset(self, test_fraction=0.2):
         """Load dataset and apply same time-based split as training."""
@@ -58,7 +46,7 @@ class AMQSSEvaluator:
         split_idx = int(len(df) * (1 - test_fraction))
         test_df = df.iloc[split_idx:].copy()
         
-        print(f"[Evaluator] Test set: {len(test_df)} samples")
+        print(f"Test set: {len(test_df)} samples")
         return test_df
     
     def extract_features_and_labels(self, df):
@@ -68,29 +56,19 @@ class AMQSSEvaluator:
         return X, y
     
     def evaluate(self, output_dir=None, test_fraction=0.2):
-        """
-        Compute metrics on test set.
-        
-        Returns:
-            metrics_dict, test_df, predictions
-        """
         test_df = self.load_and_split_dataset(test_fraction=test_fraction)
         X_test, y_test = self.extract_features_and_labels(test_df)
         
-        # Scale
         X_test_scaled = self.scaler.transform(X_test)
         
-        # Predictions
         y_pred = self.model.predict(X_test_scaled)
         y_proba = self.model.predict_proba(X_test_scaled)[:, 1]
         
-        # Check if both classes are present
         unique_test = np.unique(y_test)
         if len(unique_test) == 1:
-            print("[Evaluator] WARNING: Test set contains only one class!")
+            print("Test set contains only one class")
             print(f"  Unique classes: {unique_test}")
             print("  Using full dataset for evaluation instead.")
-            # Use full dataset instead
             full_df = pd.read_csv(self.dataset_csv_path)
             full_df['timestamp'] = pd.to_datetime(full_df['timestamp'])
             X_full, y_full = self.extract_features_and_labels(full_df)
@@ -98,9 +76,8 @@ class AMQSSEvaluator:
             y_test = y_full
             y_pred = self.model.predict(X_full_scaled)
             y_proba = self.model.predict_proba(X_full_scaled)[:, 1]
-            test_df = full_df  # Update test_df to full data
+            test_df = full_df
         
-        # Metrics with proper handling
         try:
             roc_auc = roc_auc_score(y_test, y_proba)
         except:
@@ -110,7 +87,6 @@ class AMQSSEvaluator:
         recall = recall_score(y_test, y_pred, zero_division=0)
         f1 = f1_score(y_test, y_pred, zero_division=0)
         
-        # Confusion matrix with labels to avoid unpacking errors
         cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
         if cm.size == 4:
             tn, fp, fn, tp = cm.ravel()
@@ -125,18 +101,15 @@ class AMQSSEvaluator:
         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
         sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
         
-        # PR-AUC
         try:
             precision_vals, recall_vals, _ = precision_recall_curve(y_test, y_proba)
             pr_auc = auc(recall_vals, precision_vals)
         except:
             pr_auc = np.nan
         
-        # Weighted F1
         from sklearn.metrics import f1_score as f1_weighted
         f1_weighted_score = f1_weighted(y_test, y_pred, average='weighted')
         
-        # Classification report
         from sklearn.metrics import classification_report
         try:
             class_report = classification_report(y_test, y_pred, target_names=['Low Quality', 'High Quality'], output_dict=True, zero_division=0)
@@ -164,7 +137,7 @@ class AMQSSEvaluator:
             'class_report': class_report
         }
         
-        print("\n[Evaluator] === Test Set Performance ===")
+        print("\nTest set performance")
         roc_auc_str = f"{metrics['roc_auc']:.4f}" if metrics['roc_auc'] else "N/A"
         pr_auc_str = f"{metrics['pr_auc']:.4f}" if metrics['pr_auc'] else "N/A"
         print(f"  ROC-AUC:       {roc_auc_str}")

@@ -17,20 +17,9 @@ from pathlib import Path
 
 
 def time_based_train_test_split(df, test_fraction=0.2):
-    """
-    Split data: first (1-test_fraction) for train, last test_fraction for test.
-    But ensure BOTH classes are in train AND test (stratified).
-    
-    Args:
-        df: DataFrame with 'timestamp' column, sorted by time
-        test_fraction: Fraction of data for testing (e.g., 0.2 = 20%)
-    
-    Returns:
-        train_df, test_df (chronological, but stratified by class)
-    """
+    """Split each class chronologically so both sets contain each label."""
     df = df.sort_values('timestamp').reset_index(drop=True)
     
-    # For each class, split chronologically
     train_dfs = []
     test_dfs = []
     
@@ -44,7 +33,7 @@ def time_based_train_test_split(df, test_fraction=0.2):
     train_df = pd.concat(train_dfs).sort_values('timestamp').reset_index(drop=True)
     test_df = pd.concat(test_dfs).sort_values('timestamp').reset_index(drop=True)
     
-    print(f"[Trainer] Time-based stratified split:")
+    print("Time-based stratified split:")
     print(f"  Train: {len(train_df)} samples")
     print(f"    Class 0: {(train_df['label'] == 0).sum()}")
     print(f"    Class 1: {(train_df['label'] == 1).sum()}")
@@ -56,7 +45,7 @@ def time_based_train_test_split(df, test_fraction=0.2):
 
 
 def extract_features_and_labels(df, feature_cols=None):
-    """Extract features (X) and labels (y) from dataset."""
+    """Return the selected feature matrix and labels."""
     if feature_cols is None:
         feature_cols = [
             'volatility_regime', 'true_liquidity', 'structure', 
@@ -70,29 +59,13 @@ def extract_features_and_labels(df, feature_cols=None):
 
 
 def train_model(X_train, y_train, feature_cols, n_estimators=200, random_state=42):
-    """
-    Train RandomForest classifier with optimization for minority class.
-    
-    Args:
-        X_train: Training features
-        y_train: Training labels
-        feature_cols: List of feature names
-        n_estimators: Number of trees
-        random_state: For reproducibility
-    
-    Returns:
-        Trained model, scaler
-    """
-    # Scale features
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     
-    # Calculate class weights to handle imbalance
     from sklearn.utils.class_weight import compute_class_weight
     class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
     class_weight_dict = {i: w for i, w in enumerate(class_weights)}
     
-    # Train model with optimized hyperparameters
     model = RandomForestClassifier(
         n_estimators=n_estimators,
         max_depth=12,
@@ -101,17 +74,16 @@ def train_model(X_train, y_train, feature_cols, n_estimators=200, random_state=4
         max_features='sqrt',
         random_state=random_state,
         n_jobs=-1,
-        class_weight=class_weight_dict,  # Handle class imbalance
+        class_weight=class_weight_dict,
         bootstrap=True,
         oob_score=True  # Out-of-bag scoring for better validation
     )
     model.fit(X_train_scaled, y_train)
     
-    # Calculate weighted metrics
     from sklearn.metrics import classification_report
     y_pred = model.predict(X_train_scaled)
     
-    print(f"[Trainer] Model trained:")
+    print("Model trained:")
     print(f"  Trees: {n_estimators}, Depth: 12, Min samples split: 8")
     print(f"  Train accuracy: {model.score(X_train_scaled, y_train):.4f}")
     print(f"  OOB score: {model.oob_score_:.4f}")
