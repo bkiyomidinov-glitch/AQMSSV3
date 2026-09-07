@@ -111,12 +111,32 @@ def auth_db():
         is_active INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )''')
+    columns = {row['name'] for row in db.execute('PRAGMA table_info(users)').fetchall()}
+    if 'last_ip' not in columns:
+        db.execute('ALTER TABLE users ADD COLUMN last_ip TEXT')
+    if 'country' not in columns:
+        db.execute('ALTER TABLE users ADD COLUMN country TEXT')
     db.commit()
     return db
 
 
 def password_hash(password):
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+
+def request_ip():
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    return forwarded.split(',')[0].strip() or request.remote_addr or 'unknown'
+
+
+def country_for_ip(ip):
+    if ip in {'unknown', '127.0.0.1', '::1'}:
+        return 'Local'
+    try:
+        with urlopen(f'https://ipapi.co/{ip}/country_name/', timeout=2) as response:
+            return response.read().decode('utf-8').strip() or 'Unknown'
+    except Exception:
+        return 'Unknown'
 
 
 def current_user():
@@ -480,9 +500,10 @@ def register_page():
             return render_template('auth.html', mode='register', error='Введите email и пароль минимум из 6 символов.')
         db = auth_db()
         try:
+            ip = request_ip()
             cursor = db.execute(
-                'INSERT INTO users(email, password_hash, created_at) VALUES (?, ?, ?)',
-                (email, password_hash(password), datetime.utcnow().isoformat())
+                'INSERT INTO users(email, password_hash, created_at, last_ip, country) VALUES (?, ?, ?, ?, ?)',
+                (email, password_hash(password), datetime.utcnow().isoformat(), ip, country_for_ip(ip))
             )
             db.commit()
             session['user_id'] = cursor.lastrowid
@@ -503,6 +524,11 @@ def login_page():
         user = db.execute('SELECT * FROM users WHERE email = ? AND password_hash = ?', (email, password_hash(password))).fetchone()
         db.close()
         if user:
+            ip = request_ip()
+            db = auth_db()
+            db.execute('UPDATE users SET last_ip = ?, country = ? WHERE id = ?', (ip, country_for_ip(ip), user['id']))
+            db.commit()
+            db.close()
             session['user_id'] = user['id']
             return redirect(request.args.get('next') or url_for('terminal_page'))
         return render_template('auth.html', mode='login', error='Неверный email или пароль.')
@@ -528,7 +554,7 @@ def admin_page():
     if not os.environ.get('AQMSS_ADMIN_KEY') or request.args.get('key') != os.environ['AQMSS_ADMIN_KEY']:
         return 'Not found', 404
     db = auth_db()
-    users = db.execute('SELECT id, email, is_active, created_at FROM users ORDER BY id DESC').fetchall()
+    users = db.execute('SELECT id, email, is_active, last_ip, country FROM users ORDER BY id DESC').fetchall()
     db.close()
     return render_template('admin.html', users=users, key=request.args['key'])
 
