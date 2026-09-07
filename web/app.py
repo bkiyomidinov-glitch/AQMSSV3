@@ -116,6 +116,9 @@ def auth_db():
         db.execute('ALTER TABLE users ADD COLUMN last_ip TEXT')
     if 'country' not in columns:
         db.execute('ALTER TABLE users ADD COLUMN country TEXT')
+    for field in ('region', 'city', 'isp', 'asn', 'ip_flags'):
+        if field not in columns:
+            db.execute(f'ALTER TABLE users ADD COLUMN {field} TEXT')
     db.commit()
     return db
 
@@ -129,14 +132,25 @@ def request_ip():
     return forwarded.split(',')[0].strip() or request.remote_addr or 'unknown'
 
 
-def country_for_ip(ip):
+def ip_details(ip):
     if ip in {'unknown', '127.0.0.1', '::1'}:
-        return 'Local'
+        return {'country': 'Local', 'region': 'Local', 'city': 'Local', 'isp': 'Local', 'asn': '—', 'ip_flags': 'local'}
     try:
-        with urlopen(f'https://ipapi.co/{ip}/country_name/', timeout=2) as response:
-            return response.read().decode('utf-8').strip() or 'Unknown'
+        with urlopen(f'https://ipwho.is/{ip}', timeout=4) as response:
+            data = json.loads(response.read().decode('utf-8'))
+        connection = data.get('connection') or {}
+        security = data.get('security') or {}
+        flags = [name for name in ('vpn', 'proxy', 'tor', 'hosting') if security.get(name)]
+        return {
+            'country': data.get('country') or 'Unknown',
+            'region': data.get('region') or 'Unknown',
+            'city': data.get('city') or 'Unknown',
+            'isp': connection.get('isp') or connection.get('org') or 'Unknown',
+            'asn': str(connection.get('asn') or '—'),
+            'ip_flags': ', '.join(flags) if flags else 'clean'
+        }
     except Exception:
-        return 'Unknown'
+        return {'country': 'Unknown', 'region': 'Unknown', 'city': 'Unknown', 'isp': 'Unknown', 'asn': '—', 'ip_flags': 'unavailable'}
 
 
 def current_user():
@@ -501,9 +515,10 @@ def register_page():
         db = auth_db()
         try:
             ip = request_ip()
+            details = ip_details(ip)
             cursor = db.execute(
-                'INSERT INTO users(email, password_hash, created_at, last_ip, country) VALUES (?, ?, ?, ?, ?)',
-                (email, password_hash(password), datetime.utcnow().isoformat(), ip, country_for_ip(ip))
+                'INSERT INTO users(email, password_hash, created_at, last_ip, country, region, city, isp, asn, ip_flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (email, password_hash(password), datetime.utcnow().isoformat(), ip, details['country'], details['region'], details['city'], details['isp'], details['asn'], details['ip_flags'])
             )
             db.commit()
             session['user_id'] = cursor.lastrowid
@@ -525,8 +540,9 @@ def login_page():
         db.close()
         if user:
             ip = request_ip()
+            details = ip_details(ip)
             db = auth_db()
-            db.execute('UPDATE users SET last_ip = ?, country = ? WHERE id = ?', (ip, country_for_ip(ip), user['id']))
+            db.execute('UPDATE users SET last_ip = ?, country = ?, region = ?, city = ?, isp = ?, asn = ?, ip_flags = ? WHERE id = ?', (ip, details['country'], details['region'], details['city'], details['isp'], details['asn'], details['ip_flags'], user['id']))
             db.commit()
             db.close()
             session['user_id'] = user['id']
@@ -554,7 +570,7 @@ def admin_page():
     if not os.environ.get('AQMSS_ADMIN_KEY') or request.args.get('key') != os.environ['AQMSS_ADMIN_KEY']:
         return 'Not found', 404
     db = auth_db()
-    users = db.execute('SELECT id, email, is_active, last_ip, country FROM users ORDER BY id DESC').fetchall()
+    users = db.execute('SELECT id, email, is_active, last_ip, country, region, city, isp, asn, ip_flags FROM users ORDER BY id DESC').fetchall()
     db.close()
     return render_template('admin.html', users=users, key=request.args['key'])
 
