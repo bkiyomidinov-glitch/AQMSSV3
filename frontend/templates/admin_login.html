@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AQMSS Admin Access</title>
+  <link rel="stylesheet" href="/static/standalone.css">
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body class="standalone-body auth-page">
+  <main class="auth-card">
+    <a href="/" class="standalone-brand"><span class="mini-logo">A</span>AQMSS</a>
+    <div class="auth-kicker">SECURITY GATE</div>
+    <h1>Вход для администратора</h1>
+    <p>Введите секретный ключ администратора для доступа к панели управления пользователями.</p>
+    {% if error %}
+      <div class="auth-error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>
+        Admin Secret Key
+        <input type="password" name="admin_key" required autocomplete="current-password" placeholder="Введите ключ">
+      </label>
+      <button class="auth-submit">Авторизоваться <span>↗</span></button>
+    </form>
+    <div class="auth-switch">
+      <a href="/">← Вернуться на главную</a>
+    </div>
+  </main>
+</body>
+</html>

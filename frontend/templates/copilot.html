@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>AQMSS Assistant</title>
+  <link rel="stylesheet" href="/static/standalone.css">
+</head>
+<body class="standalone-body copilot-page">
+  <header class="standalone-header">
+    <a href="/" class="standalone-brand"><span class="mini-logo">A</span>AQMSS <small>ASSISTANT</small></a>
+    <div class="standalone-actions">
+      <span class="live"><i></i> LIVE AQMSS</span>
+      <a href="/terminal">Open Terminal ↗</a>
+      <a href="/news">News ↗</a>
+      <a href="/logout" style="margin-left: 10px;">Выйти</a>
+    </div>
+  </header>
+  <main class="copilot-window">
+    <section class="copilot-window-head">
+      <div class="copilot-avatar">✦</div>
+      <div>
+        <h1>AQMSS Assistant</h1>
+        <p>Market intelligence, explained clearly.</p>
+      </div>
+      <span class="model-chip">LIVE AQMSS</span>
+    </section>
+    <div class="copilot-messages" id="messages">
+      <div class="copilot-message ai">
+        <span class="message-avatar">✦</span>
+        <div>
+          <small>AQMSS ASSISTANT</small>
+          <p>Привет. Я готов анализировать рынок, риск, тренд и текущий AQMSS score.</p>
+        </div>
+      </div>
+    </div>
+    <div class="quick-prompts">
+      <button data-prompt="Проанализируй BTCUSD">Анализ BTC</button>
+      <button data-prompt="Сравни EURUSD и BTCUSD">Сравнить EUR vs BTC</button>
+      <button data-prompt="Какие сейчас лучшие возможности на рынке?">Топ возможностей</button>
+      <button data-prompt="Где повышенный риск и зона NO TRADE?">Зоны риска (NO TRADE)</button>
+    </div>
+    <div class="copilot-compose">
+      <textarea id="prompt" rows="1" placeholder="Спросите что-нибудь про рынок..."></textarea>
+      <button id="send" title="Send">↑</button>
+    </div>
+    <div class="copilot-status" id="status">
+      <span></span><span></span><span></span> Assistant печатает только когда отвечает
+    </div>
+  </main>
+  <script src="/static/copilot.js"></script>
+</body>
+</html>

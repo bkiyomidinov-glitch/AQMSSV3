@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>AQMSS Admin</title>
+  <link rel="stylesheet" href="/static/standalone.css">
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body class="standalone-body auth-page">
+  <main class="admin-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div class="auth-kicker" style="margin-bottom: 0;">AQMSS ACCESS CONTROL</div>
+      <a href="/admin/logout" style="color: #ef4444; text-decoration: none; font-size: 0.85rem; font-weight: 600;">Выйти из панели ↗</a>
+    </div>
+    <h1>Пользователи</h1>
+    <p>IP-данные ориентировочные: VPN/proxy и мобильные сети могут менять геолокацию.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>IP / сеть</th>
+          <th>Локация</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user['email'] }}</td>
+          <td>
+            <strong>{{ user['last_ip'] or '—' }}</strong>
+            <small>{{ user['isp'] or 'Unknown' }} · {{ user['asn'] or '—' }}<br>{{ user['ip_flags'] or 'unknown' }}</small>
+          </td>
+          <td>{{ user['city'] or 'Unknown' }}, {{ user['region'] or 'Unknown' }}<br><strong>{{ user['country'] or 'Unknown' }}</strong></td>
+          <td>{{ 'Активен' if user['is_active'] else 'Ожидает оплаты' }}</td>
+          <td>
+            {% if not user['is_active'] %}
+            <form method="post" action="/admin/activate/{{ user['id'] }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="activate-button">Активировать</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1);">
+      <div class="auth-kicker">AUTOMATION & ALERTS</div>
+      <h2>Уведомления о смене рыночного режима</h2>
+      <p style="margin-bottom: 16px;">Мгновенная отправка сигналов при переходе активов в HIGH_QUALITY_MARKET или NO_TRADE_ZONE.</p>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div>
+          <label style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Telegram Bot Token</label>
+          <input type="password" id="tg_token" placeholder="123456:ABC-DEF..." style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: #fff; margin-top: 4px;">
+        </div>
+        <div>
+          <label style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Telegram Chat ID</label>
+          <input type="text" id="tg_chat" placeholder="например: 12345678" style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: #fff; margin-top: 4px;">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888;">Universal Webhook URL (Discord / TradingView / Custom)</label>
+          <input type="url" id="wb_url" placeholder="https://webhook.site/..." style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: #fff; margin-top: 4px;">
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button id="save_alerts_btn" class="activate-button" style="background: #2563eb;">Сохранить настройки алертов</button>
+        <button id="test_alert_btn" class="activate-button" style="background: #374151;">Отправить тестовый алерт</button>
+        <span id="alert_status_msg" style="font-size: 0.85rem; color: #10b981;"></span>
+      </div>
+    </div>
+
+    <script>
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      
+      // Load current config
+      fetch('/api/alerts', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success && data.config) {
+            if (data.config.telegram_chat_id) document.getElementById('tg_chat').value = data.config.telegram_chat_id;
+            if (data.config.webhook_url) document.getElementById('wb_url').value = data.config.webhook_url;
+            if (data.config.telegram_token_masked) document.getElementById('tg_token').placeholder = data.config.telegram_token_masked;
+          }
+        }).catch(()=>{});
+
+      document.getElementById('save_alerts_btn').onclick = async () => {
+        const msg = document.getElementById('alert_status_msg');
+        msg.textContent = 'Сохранение...';
+        try {
+          const res = await fetch('/api/alerts/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({
+              telegram_bot_token: document.getElementById('tg_token').value,
+              telegram_chat_id: document.getElementById('tg_chat').value,
+              webhook_url: document.getElementById('wb_url').value,
+              csrf_token: csrfToken
+            })
+          });
+          const d = await res.json();
+          if (d.success) {
+            msg.textContent = '✅ Настройки сохранены!';
+            msg.style.color = '#10b981';
+          } else {
+            msg.textContent = '❌ ' + (d.error || 'Ошибка');
+            msg.style.color = '#ef4444';
+          }
+        } catch(e) {
+          msg.textContent = '❌ Ошибка сети';
+          msg.style.color = '#ef4444';
+        }
+      };
+
+      document.getElementById('test_alert_btn').onclick = async () => {
+        const msg = document.getElementById('alert_status_msg');
+        msg.textContent = 'Отправка теста...';
+        try {
+          const res = await fetch('/api/alerts/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ csrf_token: csrfToken })
+          });
+          const d = await res.json();
+          if (d.success) {
+            msg.textContent = '🚀 Тестовый алерт отправлен в каналы!';
+            msg.style.color = '#10b981';
+          } else {
+            msg.textContent = '❌ ' + (d.error || 'Ошибка');
+            msg.style.color = '#ef4444';
+          }
+        } catch(e) {
+          msg.textContent = '❌ Ошибка сети';
+          msg.style.color = '#ef4444';
+        }
+      };
+    </script>
+
+    <a class="back-link" href="/">На главную →</a>
+  </main>
+</body>
+</html>

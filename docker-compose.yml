@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  aqmss-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aqmss-platform
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+      - ./frontend/templates:/app/frontend/templates
+      - ./frontend/static:/app/frontend/static
+    restart: unless-stopped
+    networks:
+      - aqmss-network
+
+networks:
+  aqmss-network:
+    driver: bridge

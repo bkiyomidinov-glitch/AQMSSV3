@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>AQMSS Test</title>
+    <link rel="stylesheet" href="/static/standalone.css">
+    <link rel="stylesheet" href="/static/test.css">
+    <link rel="stylesheet" href="/static/test-extra.css">
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="standalone-body">
+<header class="standalone-header">
+    <a href="/" class="standalone-brand"><span class="mini-logo">A</span>AQMSS <small>TEST</small></a>
+    <div class="standalone-actions"><span class="live"><i></i> LIVE AQMSS</span><a href="/terminal">Terminal ↗</a><a href="/copilot">Assistant ↗</a><a href="/news">News ↗</a><a href="/test">Test ↗</a></div>
+</header>
+<main class="test-page">
+    <div class="test-heading">
+        <div><span class="eyebrow">PRIVATE DATA LAB / CSV WORKSPACE</span><h1>Test</h1><p>Загрузите финансовый CSV и превратите его в график и AI-анализ.</p></div>
+        <label class="upload-button">＋ Загрузить CSV<input id="csv-file" type="file" accept=".csv,text/csv" hidden></label>
+    </div>
+    <section class="aqmss-test-card aqmss-always-visible">
+        <div class="aqmss-test-score"><span class="eyebrow">AQMSS SCORE</span><strong id="aqmss-score">--</strong><small>/10</small><b id="aqmss-condition">Загрузка оценки...</b></div>
+        <div class="aqmss-test-analysis"><span class="eyebrow">AQMSS ANALYSIS</span><h2 id="aqmss-analysis-title">Анализ текущего рынка</h2><p id="aqmss-analysis">Получаем структуру, импульс, ликвидность и волатильность.</p><div class="aqmss-factor-row"><span>Structure</span><i><b id="factor-structure"></b></i><strong id="factor-structure-value">--</strong></div><div class="aqmss-factor-row"><span>Momentum</span><i><b id="factor-momentum"></b></i><strong id="factor-momentum-value">--</strong></div><div class="aqmss-factor-row"><span>Liquidity</span><i><b id="factor-liquidity"></b></i><strong id="factor-liquidity-value">--</strong></div></div>
+        <div class="aqmss-test-prob"><span class="eyebrow">AI QUALITY PROBABILITY</span><strong id="aqmss-probability">--%</strong><small>Вероятность высокого качества рынка</small></div>
+    </section>
+    <section class="test-empty" id="empty-state">
+        <div class="empty-icon">＋</div><h2>Workspace пока пуст</h2>
+        <p>Поддерживаются колонки <code>timestamp, open, high, low, close, volume</code>.</p>
+        <label class="empty-upload">Выбрать CSV<input id="empty-csv-file" type="file" accept=".csv,text/csv" hidden></label>
+    </section>
+    <section class="test-workspace" id="workspace" hidden>
+        <div class="data-summary"><div><span>FILE</span><strong id="file-name">--</strong></div><div><span>ROWS</span><strong id="row-count">--</strong></div><div><span>LAST CLOSE</span><strong id="last-close">--</strong></div><div><span>RANGE</span><strong id="date-range">--</strong></div><button id="reset-data">× Очистить</button></div>
+        <div class="test-grid">
+            <section class="test-chart-card"><div class="test-card-head"><div><span class="eyebrow">UPLOADED MARKET DATA</span><h2 id="chart-title">CSV chart</h2></div><span class="data-source">LOCAL CSV</span></div><div id="test-chart"></div><div class="test-chart-foot"><span>Свечи из вашего файла</span><span>Drag to pan · Wheel to zoom</span></div></section>
+            <aside class="test-assistant"><div class="test-card-head"><div><span class="eyebrow">AQMSS ASSISTANT</span><h2>Разбор данных</h2></div><span class="live">ONLINE</span></div><div class="data-insight" id="data-insight">Данные загружены. Задайте вопрос об этом наборе.</div><div class="test-messages" id="test-messages"><div class="test-message ai">Я проанализирую CSV и текущую оценку AQMSS: тренд, диапазон, волатильность и качество рынка.</div></div><div class="test-compose"><textarea id="test-prompt" rows="2" placeholder="Что видно на этом графике?"></textarea><button id="test-send">↑</button></div><div class="test-typing" id="test-typing">● ● ● &nbsp; Assistant печатает...</div></aside>
+        </div>
+    </section>
+</main>
+<script src="/static/test.js?v=20260905-csv2"></script>
+</body>
+</html>
